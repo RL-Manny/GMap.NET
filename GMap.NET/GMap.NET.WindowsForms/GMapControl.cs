@@ -748,7 +748,7 @@ namespace GMap.NET.WindowsForms
                 int maxZoom = Core.GetMaxZoomToFitRect(rect);
                 if (maxZoom > 0)
                 {
-                    var center = new PointLatLng(rect.Lat - rect.HeightLat / 2, rect.Lng + rect.WidthLng / 2);
+                    var center = new PointLatLng(rect.Lat + rect.WidthLng / 2.0, rect.Lng + rect.HeightLat / 2.0);
                     Position = center;
 
                     if (maxZoom > MaxZoom)
