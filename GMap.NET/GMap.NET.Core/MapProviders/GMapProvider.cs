@@ -110,6 +110,10 @@ namespace GMap.NET.MapProviders
         public static readonly YandexSatelliteMapProvider YandexSatelliteMap = YandexSatelliteMapProvider.Instance;
         public static readonly YandexHybridMapProvider YandexHybridMap = YandexHybridMapProvider.Instance;
 
+        public static readonly BaiduMapProvider BaiduMap = BaiduMapProvider.Instance;
+        public static readonly BaiduSatelliteMapProvider BaiduSatelliteMap = BaiduSatelliteMapProvider.Instance;
+        public static readonly BaiduHybridMapProvider BaiduHybridMap = BaiduHybridMapProvider.Instance;
+
         public static readonly LithuaniaMapProvider LithuaniaMap = LithuaniaMapProvider.Instance;
         public static readonly LithuaniaReliefMapProvider LithuaniaReliefMap = LithuaniaReliefMapProvider.Instance;
         public static readonly Lithuania3dMapProvider Lithuania3dMap = Lithuania3dMapProvider.Instance;
