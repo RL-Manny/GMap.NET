@@ -505,7 +505,7 @@ namespace GMap.NET.WindowsPresentation
         /// <summary>
         ///     map dragg button
         /// </summary>
-        [Category("GMap.NET")] public MouseButton DragButton = MouseButton.Right;
+        [Category("GMap.NET")] public MouseButton[] DragButton = new[] { MouseButton.Right };
 
         /// <summary>
         ///     use circle for selection
@@ -1793,7 +1793,7 @@ namespace GMap.NET.WindowsPresentation
         {
             base.OnMouseDown(e);
 
-            if (CanDragMap && e.ChangedButton == DragButton)
+            if (CanDragMap && DragButton.Contains(e.ChangedButton))
             {
                 var p = e.GetPosition(this);
 
@@ -1856,7 +1856,7 @@ namespace GMap.NET.WindowsPresentation
             }
             else
             {
-                if (e.ChangedButton == DragButton)
+                if (DragButton.Contains(e.ChangedButton))
                 {
                     _core.MouseDown = GPoint.Empty;
                 }
@@ -1906,8 +1906,8 @@ namespace GMap.NET.WindowsPresentation
                 p = ApplyRotationInversion(p.X, p.Y);
 
                 // cursor has moved beyond drag tolerance
-                if (e.LeftButton == MouseButtonState.Pressed && DragButton == MouseButton.Left ||
-                    e.RightButton == MouseButtonState.Pressed && DragButton == MouseButton.Right)
+                if (e.LeftButton == MouseButtonState.Pressed && DragButton.Contains(MouseButton.Left) ||
+                    e.RightButton == MouseButtonState.Pressed && DragButton.Contains(MouseButton.Right))
                 {
                     if (Math.Abs(p.X - _core.MouseDown.X) * 2 >= SystemParameters.MinimumHorizontalDragDistance ||
                         Math.Abs(p.Y - _core.MouseDown.Y) * 2 >= SystemParameters.MinimumVerticalDragDistance)
