@@ -39,11 +39,6 @@ namespace GMap.NET.MapProviders
             get;
         } = "BaiduSatelliteMap";
 
-        public override string CnName
-        {
-            get;
-        } = "百度卫星地图";
-
         public override PureImage GetTileImage(GPoint pos, int zoom)
         {
             string url = MakeTileImageUrl(pos, zoom, LanguageStr);

@@ -34,11 +34,6 @@ namespace GMap.NET.MapProviders
             get;
         } = "BaiduHybridMap";
 
-        public override string CnName
-        {
-            get;
-        } = "百度混合地图";
-
         GMapProvider[] _overlays;
 
         public override GMapProvider[] Overlays

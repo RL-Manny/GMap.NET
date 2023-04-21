@@ -40,14 +40,6 @@ namespace GMap.NET.MapProviders
             }
         }
 
-        public virtual string CnName
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-        }
-
         public string Version
         {
             get

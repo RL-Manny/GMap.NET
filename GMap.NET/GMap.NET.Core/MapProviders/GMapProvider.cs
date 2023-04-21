@@ -6,6 +6,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using GMap.NET.Internals;
+using GMap.NET.MapProviders.AMap;
 using GMap.NET.Projections;
 
 namespace GMap.NET.MapProviders
@@ -109,6 +110,10 @@ namespace GMap.NET.MapProviders
         public static readonly YandexMapProvider YandexMap = YandexMapProvider.Instance;
         public static readonly YandexSatelliteMapProvider YandexSatelliteMap = YandexSatelliteMapProvider.Instance;
         public static readonly YandexHybridMapProvider YandexHybridMap = YandexHybridMapProvider.Instance;
+
+        public static readonly AMapProvider AMap = AMapProvider.Instance;
+        public static readonly AMapSatelliteProvider AMapSatelliteMap = AMapSatelliteProvider.Instance;
+        public static readonly AMapHybridProvider AMapHybridMap = AMapHybridProvider.Instance;
 
         public static readonly BaiduMapProvider BaiduMap = BaiduMapProvider.Instance;
         public static readonly BaiduSatelliteMapProvider BaiduSatelliteMap = BaiduSatelliteMapProvider.Instance;
