@@ -261,7 +261,7 @@ namespace GMap.NET.Internals
             int mmaxZoom = GetMaxZoomToFitRect(rect);
             if (mmaxZoom > 0)
             {
-                var center = new PointLatLng(rect.Lat + rect.WidthLng / 2.0, rect.Lng + rect.HeightLat / 2.0);
+                var center = new PointLatLng(rect.Lat - rect.HeightLat / 2, rect.Lng + rect.WidthLng / 2);
                 Position = center;
 
                 if (mmaxZoom > MaxZoom)
