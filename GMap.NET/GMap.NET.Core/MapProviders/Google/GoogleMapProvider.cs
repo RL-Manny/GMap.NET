@@ -214,9 +214,9 @@ namespace GMap.NET.MapProviders
                         }
 
                         #endregion
-                    }
 
-                    _init = true; // try it only once
+                        _init = true; // try it only once
+                    }
                 }
                 catch (Exception ex)
                 {
