@@ -217,6 +217,10 @@ namespace GMap.NET.MapProviders
 
                         _init = true; // try it only once
                     }
+                    else
+                    {
+                        IsInitialized = false;
+                    }
                 }
                 catch (Exception ex)
                 {
