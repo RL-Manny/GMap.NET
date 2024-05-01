@@ -1404,6 +1404,18 @@ namespace GMap.NET.WindowsPresentation
             }
         }
 
+        public void Transform(Point p)
+        {
+            if (MapScaleTransform != null)
+            {
+                p = MapScaleTransform.Inverse.Transform(p);
+            }
+
+            p = ApplyRotationInversion(p.X, p.Y);
+
+            InvalidateVisual();
+        }
+
         readonly RotateTransform _rotationMatrix = new RotateTransform();
         GeneralTransform _rotationMatrixInvert = new RotateTransform();
 
@@ -1884,6 +1896,8 @@ namespace GMap.NET.WindowsPresentation
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+
+            Debug.WriteLine("OnMouseMove: " + e.GetPosition(this));
 
             // wpf generates to many events if mouse is over some visual
             // and OnMouseUp is fired, wtf, anyway...
