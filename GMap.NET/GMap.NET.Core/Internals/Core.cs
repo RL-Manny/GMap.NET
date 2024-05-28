@@ -701,6 +701,20 @@ namespace GMap.NET.Internals
             UpdateCenterTileXYLocation();
         }
 
+        public void SmoothOffset(GPoint offset)
+        {
+            _dragPoint = GPoint.Empty;
+            RenderOffset.Offset(offset);
+
+            UpdateCenterTileXYLocation();
+
+            if (CenterTileXYLocation != _centerTileXYLocationLast)
+            {
+                _centerTileXYLocationLast = CenterTileXYLocation;
+                UpdateBounds();
+            }
+        }
+
         /// <summary>
         ///     darg map by offset in pixels
         /// </summary>

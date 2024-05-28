@@ -183,22 +183,26 @@
                 </CheckBox>
             </Grid>
         </GroupBox>
-        <GroupBox Header="Real Time" Height="74" HorizontalAlignment="Right" Margin="0,471,12,0" Name="GroupBox5"
+        <GroupBox Header="Real Time" Height="90" HorizontalAlignment="Right" Margin="0,471,12,0" Name="GroupBox5"
                   VerticalAlignment="Top" Width="169">
-            <Grid>
-                <RadioButton Height="16" Margin="7,6,36,0" Name="RadioButtonTransport" VerticalAlignment="Top"
+            <StackPanel Margin="2">
+                <RadioButton Height="16" Name="RadioButtonTransport" VerticalAlignment="Top"
                              Checked="RealTimeChanged">
                     Transport demo
                 </RadioButton>
-                <RadioButton Margin="6,28,56,0" Name="RadioButtonPerformance" Checked="RealTimeChanged" Height="17.04"
+                <RadioButton Name="RadioButtonPerformance" Checked="RealTimeChanged" Height="17.04"
                              VerticalAlignment="Top">
                     Performance
                 </RadioButton>
-                <RadioButton HorizontalAlignment="Right" Margin="0,0,-6,7" Name="RadioButtonNone" Width="56"
-                             Height="16.04" VerticalAlignment="Bottom" IsChecked="True" Checked="RealTimeChanged">
+                <RadioButton Name="RadioButtonMovement" Checked="RealTimeChanged" Height="17.04"
+                             VerticalAlignment="Top">
+                    Movement
+                </RadioButton>
+                <RadioButton Name="RadioButtonNone" Height="16.04" 
+                             VerticalAlignment="Top" IsChecked="True" Checked="RealTimeChanged">
                     None
                 </RadioButton>
-            </Grid>
+            </StackPanel>
         </GroupBox>
         <GroupBox Header="markers" HorizontalAlignment="Right" Name="Markers" Width="169" Margin="0,299,11,283"
                   Height="80" VerticalAlignment="Top">

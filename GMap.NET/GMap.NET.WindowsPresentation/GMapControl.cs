@@ -1404,6 +1404,31 @@ namespace GMap.NET.WindowsPresentation
             }
         }
 
+        public void SmoothOffset(long x, long y)
+        {
+            if (IsLoaded)
+            {
+                if (IsRotated)
+                {
+                    var p = new Point(x, y);
+                    p = _rotationMatrixInvert.Transform(p);
+                    x = (int)p.X;
+                    y = (int)p.Y;
+
+                    _core.SmoothOffset(new GPoint(x, y));
+
+                    ForceUpdateOverlays();
+                }
+                else
+                {
+                    _core.SmoothOffset(new GPoint(x, y));
+
+                    UpdateMarkersOffset();
+                    InvalidateVisual(true);
+                }
+            }
+        }
+
         public void Transform(Point p)
         {
             if (MapScaleTransform != null)

@@ -61,8 +61,9 @@ namespace Demo.WindowsPresentation
             GoogleMapProvider.Instance.ApiKey = Stuff.GoogleMapsApiKey;
 
             // config map
-            MainMap.MapProvider = GMapProviders.OpenStreetMap;
-            MainMap.Position = new PointLatLng(54.6961334816182, 25.2985095977783);
+            MainMap.MapProvider = GMapProviders.GoogleMap;
+            MainMap.Position = new PointLatLng(51.986677361, -0.985765457);
+            MainMap.Zoom = 18;
 
             MainMap.TouchEnabled = false;
             MainMap.MultiTouchEnabled = true;
@@ -184,6 +185,10 @@ namespace Demo.WindowsPresentation
                 }
             }
 
+            // movement test
+            timer.Interval = TimeSpan.FromMilliseconds(10);
+            timer.Tick += timer_Tick;
+
             // perfromance test
             timer.Interval = TimeSpan.FromMilliseconds(44);
             timer.Tick += timer_Tick;
@@ -245,34 +250,49 @@ namespace Demo.WindowsPresentation
 
         void timer_Tick(object sender, EventArgs e)
         {
-            var pos = new PointLatLng(NextDouble(r, MainMap.ViewArea.Top, MainMap.ViewArea.Bottom),
-                NextDouble(r, MainMap.ViewArea.Left, MainMap.ViewArea.Right));
-            var m = new GMapMarker(pos);
+            if (RadioButtonPerformance.IsChecked == true)
             {
-                var s = new Test((_tt++).ToString());
-
-                var image = new Image();
+                var pos = new PointLatLng(NextDouble(r, MainMap.ViewArea.Top, MainMap.ViewArea.Bottom),
+                    NextDouble(r, MainMap.ViewArea.Left, MainMap.ViewArea.Right));
+                var m = new GMapMarker(pos);
                 {
-                    RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.LowQuality);
-                    image.Stretch = Stretch.None;
-                    image.Opacity = s.Opacity;
+                    var s = new Test((_tt++).ToString());
 
-                    image.MouseEnter += image_MouseEnter;
-                    image.MouseLeave += image_MouseLeave;
+                    var image = new Image();
+                    {
+                        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.LowQuality);
+                        image.Stretch = Stretch.None;
+                        image.Opacity = s.Opacity;
 
-                    image.Source = ToImageSource(s);
+                        image.MouseEnter += image_MouseEnter;
+                        image.MouseLeave += image_MouseLeave;
+
+                        image.Source = ToImageSource(s);
+                    }
+
+                    m.Shape = image;
+
+                    m.Offset = new Point(-s.Width, -s.Height);
                 }
+                MainMap.Markers.Add(m);
 
-                m.Shape = image;
-
-                m.Offset = new Point(-s.Width, -s.Height);
+                if (_tt >= 333)
+                {
+                    timer.Stop();
+                    _tt = 0;
+                }
             }
-            MainMap.Markers.Add(m);
-
-            if (_tt >= 333)
+            else if (RadioButtonMovement.IsChecked == true)
             {
-                timer.Stop();
-                _tt = 0;
+                var newPosition = MainMap.Position;
+                newPosition.Offset(new PointLatLng(0.00001, 0.00001));
+
+                var currentPoint = MainMap.FromLatLngToLocal(MainMap.Position);
+                var newPoint = MainMap.FromLatLngToLocal(newPosition);
+
+                GPoint offset = new GPoint(newPoint.X - currentPoint.X, newPoint.Y - currentPoint.Y);
+                MainMap.SmoothOffset(offset.X, offset.Y);
+                MainMap.Position = newPosition;
             }
         }
 
@@ -797,7 +817,7 @@ namespace Demo.WindowsPresentation
                 }
             }
 
-            if (RadioButtonPerformance.IsChecked == true)
+            if (RadioButtonPerformance.IsChecked == true || RadioButtonMovement.IsChecked == true)
             {
                 _tt = 0;
                 if (!timer.IsEnabled)
@@ -933,7 +953,7 @@ namespace Demo.WindowsPresentation
             MainMap.Markers.Clear();
 
             // start performance test
-            if (RadioButtonPerformance.IsChecked == true)
+            if (RadioButtonPerformance.IsChecked == true || RadioButtonMovement.IsChecked == true)
             {
                 timer.Start();
             }
