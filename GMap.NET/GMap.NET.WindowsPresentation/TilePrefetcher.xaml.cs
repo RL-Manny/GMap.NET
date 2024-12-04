@@ -1,12 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
-using GMap.NET.Internals;
 using GMap.NET.MapProviders;
+using static GMap.NET.WindowsPresentation.GMapTileCache;
 
 namespace GMap.NET.WindowsPresentation
 {
@@ -15,29 +13,21 @@ namespace GMap.NET.WindowsPresentation
     /// </summary>
     public partial class TilePrefetcher : Window
     {
-        readonly BackgroundWorker _worker = new BackgroundWorker();
-        List<GPoint> _list = new List<GPoint>();
-        int _zoom;
-        GMapProvider _provider;
-        int _sleep;
-        int _all;
+        readonly GMapTileCache _tileCache;
         public bool ShowCompleteMessage = false;
-        RectLatLng _area;
-        GSize _maxOfTiles;
 
         public TilePrefetcher()
         {
+            _tileCache = new GMapTileCache(_done);
+
             InitializeComponent();
 
             GMaps.Instance.OnTileCacheComplete += OnTileCacheComplete;
             GMaps.Instance.OnTileCacheStart += OnTileCacheStart;
             GMaps.Instance.OnTileCacheProgress += OnTileCacheProgress;
 
-            _worker.WorkerReportsProgress = true;
-            _worker.WorkerSupportsCancellation = true;
-            _worker.ProgressChanged += worker_ProgressChanged;
-            _worker.DoWork += worker_DoWork;
-            _worker.RunWorkerCompleted += worker_RunWorkerCompleted;
+            _tileCache.ProgressChanged += OnGMapTileCacheProgressChanged;
+            _tileCache.Completed += OnGMapTileCacheCompleted;
         }
 
         readonly AutoResetEvent _done = new AutoResetEvent(true);
@@ -84,27 +74,16 @@ namespace GMap.NET.WindowsPresentation
 
         public void Start(RectLatLng area, int zoom, GMapProvider provider, int sleep)
         {
-            if (!_worker.IsBusy)
+            if (!_tileCache.IsBusy)
             {
                 Label1.Text = "...";
                 ProgressBar1.Value = 0;
 
-                _area = area;
-                _zoom = zoom;
-                _provider = provider;
-                _sleep = sleep;
-
-                GMaps.Instance.UseMemoryCache = false;
-                GMaps.Instance.CacheOnIdleRead = false;
-                GMaps.Instance.BoostCacheEngine = true;
-
-                _worker.RunWorkerAsync();
+                _tileCache.Start(area, zoom, provider, sleep);
 
                 ShowDialog();
             }
         }
-
-        volatile bool _stopped;
 
         public void Stop()
         {
@@ -112,135 +91,23 @@ namespace GMap.NET.WindowsPresentation
             GMaps.Instance.OnTileCacheStart -= OnTileCacheStart;
             GMaps.Instance.OnTileCacheProgress -= OnTileCacheProgress;
 
-            _done.Set();
-
-            if (_worker.IsBusy)
-            {
-                _worker.CancelAsync();
-            }
-
-            GMaps.Instance.CancelTileCaching();
-
-            _stopped = true;
-
-            _done.Close();
+            _tileCache.Stop();
         }
 
-        void worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        private void OnGMapTileCacheCompleted(object sender, GMapTileCacheCompletedEventArgs e)
         {
             if (ShowCompleteMessage)
             {
-                if (!e.Cancelled)
-                {
-                    MessageBox.Show("Prefetch Complete! => " + ((int)e.Result).ToString() + " of " + _all);
-                }
-                else
-                {
-                    MessageBox.Show("Prefetch Canceled! => " + ((int)e.Result).ToString() + " of " + _all);
-                }
+                MessageBox.Show((!e.Cancelled ? "Prefetch Canceled!" : "Prefetch Canceled!") + "=> " + e.CurrentTileIndex.ToString() + " of " + e.TotalTileCount);
             }
-
-            _list.Clear();
-
-            GMaps.Instance.UseMemoryCache = true;
-            GMaps.Instance.CacheOnIdleRead = true;
-            GMaps.Instance.BoostCacheEngine = false;
 
             Close();
         }
 
-        bool CacheTiles(int zoom, GPoint p)
+        private void OnGMapTileCacheProgressChanged(object sender, GMapTileCacheProgressChangedEventArgs e)
         {
-            foreach (var type in _provider.Overlays)
-            {
-                Exception ex;
-                PureImage img;
-
-                // tile number inversion(BottomLeft -> TopLeft) for pergo maps
-                if (type is TurkeyMapProvider)
-                {
-                    img = GMaps.Instance.GetImageFrom(type, new GPoint(p.X, _maxOfTiles.Height - p.Y), zoom, out ex);
-                }
-                else // ok
-                {
-                    img = GMaps.Instance.GetImageFrom(type, p, zoom, out ex);
-                }
-
-                if (img != null)
-                {
-                    img.Dispose();
-                    img = null;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        void worker_DoWork(object sender, DoWorkEventArgs e)
-        {
-            if (_list != null)
-            {
-                _list.Clear();
-                _list = null;
-            }
-
-            _list = _provider.Projection.GetAreaTileList(_area, _zoom, 0);
-            _maxOfTiles = _provider.Projection.GetTileMatrixMaxXY(_zoom);
-            _all = _list.Count;
-
-            int countOk = 0;
-            int retry = 0;
-
-            Stuff.Shuffle(_list);
-
-            for (int i = 0; i < _all; i++)
-            {
-                if (_worker.CancellationPending)
-                    break;
-
-                var p = _list[i];
-                {
-                    if (CacheTiles(_zoom, p))
-                    {
-                        countOk++;
-                        retry = 0;
-                    }
-                    else
-                    {
-                        if (++retry <= 1) // retry only one
-                        {
-                            i--;
-                            Thread.Sleep(1111);
-                            continue;
-                        }
-                        else
-                        {
-                            retry = 0;
-                        }
-                    }
-                }
-
-                _worker.ReportProgress((i + 1) * 100 / _all, i + 1);
-
-                Thread.Sleep(_sleep);
-            }
-
-            e.Result = countOk;
-
-            if (!_stopped)
-            {
-                _done.WaitOne();
-            }
-        }
-
-        void worker_ProgressChanged(object sender, ProgressChangedEventArgs e)
-        {
-            Label1.Text = "Fetching tile at zoom (" + _zoom + "): " + ((int)e.UserState).ToString() + " of " +
-                               _all + ", complete: " + e.ProgressPercentage.ToString() + "%";
+            Label1.Text = "Fetching tile at zoom (" + e.Zoom + "): " + e.CurrentTileIndex.ToString() + " of " +
+                               e.TotalTileCount + ", complete: " + e.ProgressPercentage.ToString() + "%";
             ProgressBar1.Value = e.ProgressPercentage;
         }
 
