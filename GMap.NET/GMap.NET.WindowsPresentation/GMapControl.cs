@@ -1897,17 +1897,19 @@ namespace GMap.NET.WindowsPresentation
                 {
                     _core.MouseDown = GPoint.Empty;
                 }
-
-                if (!_selectionEnd.IsEmpty && !_selectionStart.IsEmpty)
+                else if (!_selectionEnd.IsEmpty && !_selectionStart.IsEmpty)
                 {
                     bool zoomtofit = false;
 
-                    if (!SelectedArea.IsEmpty && Keyboard.Modifiers == ModifierKeys.Shift)
+                    if (!SelectedArea.IsEmpty && (Keyboard.Modifiers == ModifierKeys.Shift || DisableShiftForZoom))
                     {
                         zoomtofit = SetZoomToFitRect(SelectedArea);
                     }
 
                     OnSelectionChange?.Invoke(SelectedArea, zoomtofit);
+                    SelectedArea = RectLatLng.Empty;
+                    _selectionEnd = PointLatLng.Empty;
+                    _selectionStart = PointLatLng.Empty;
                 }
                 else
                 {
@@ -2032,6 +2034,11 @@ namespace GMap.NET.WindowsPresentation
         ///     if true, selects area just by holding mouse and moving
         /// </summary>
         public bool DisableAltForSelection = false;
+
+        /// <summary>
+        ///     if true, zooms to an area just by holding mouse and moving
+        /// </summary>
+        public bool DisableShiftForZoom = false;
 
         protected override void OnStylusDown(StylusDownEventArgs e)
         {
