@@ -1627,11 +1627,9 @@ namespace GMap.NET.WindowsPresentation
                 }
                 else
                 {
-                    drawingContext.DrawRoundedRectangle(SelectedAreaFill,
+                    drawingContext.DrawRectangle(SelectedAreaFill,
                         SelectionPen,
-                        new Rect(x1, y1, x2 - x1, y2 - y1),
-                        5,
-                        5);
+                        new Rect(x1, y1, x2 - x1, y2 - y1));
                 }
             }
 
@@ -1848,12 +1846,12 @@ namespace GMap.NET.WindowsPresentation
             }
             else
             {
+                ClearSelectedArea();
+
                 if (!_isSelected)
                 {
                     var p = e.GetPosition(this);
                     _isSelected = true;
-                    SelectedArea = RectLatLng.Empty;
-                    _selectionEnd = PointLatLng.Empty;
                     _selectionStart = FromLocalToLatLng((int)p.X, (int)p.Y);
                 }
             }
@@ -1897,19 +1895,22 @@ namespace GMap.NET.WindowsPresentation
                 {
                     _core.MouseDown = GPoint.Empty;
                 }
-                else if (!_selectionEnd.IsEmpty && !_selectionStart.IsEmpty)
+
+                if (!_selectionEnd.IsEmpty && !_selectionStart.IsEmpty)
                 {
                     bool zoomtofit = false;
 
-                    if (!SelectedArea.IsEmpty && (Keyboard.Modifiers == ModifierKeys.Shift || DisableShiftForZoom))
+                    if (!SelectedArea.IsEmpty && EnableAutomaticAreaZoom && AreaZoomModifierKeys.All(x => Keyboard.Modifiers.HasFlag(x)))
                     {
                         zoomtofit = SetZoomToFitRect(SelectedArea);
                     }
 
-                    OnSelectionChange?.Invoke(SelectedArea, zoomtofit);
-                    SelectedArea = RectLatLng.Empty;
-                    _selectionEnd = PointLatLng.Empty;
-                    _selectionStart = PointLatLng.Empty;
+                    OnSelectionChange?.Invoke(SelectedArea, zoomtofit, _selectionStart, _selectionEnd);
+
+                    if (zoomtofit)
+                    {
+                        ClearSelectedArea();
+                    }
                 }
                 else
                 {
@@ -2005,8 +2006,9 @@ namespace GMap.NET.WindowsPresentation
             else
             {
                 if (_isSelected && !_selectionStart.IsEmpty &&
-                    (Keyboard.Modifiers == ModifierKeys.Shift || Keyboard.Modifiers == ModifierKeys.Alt ||
-                     DisableAltForSelection))
+                    (AllowAreaSelectionWithNonDragMouseButton && ((e.LeftButton == MouseButtonState.Pressed && !DragButton.Contains(MouseButton.Left)) || (e.RightButton == MouseButtonState.Pressed && !DragButton.Contains(MouseButton.Right))) ||
+                    (EnableAutomaticAreaSelection && AreaSelectionModifierKeys.All(x => Keyboard.Modifiers.HasFlag(x))) ||
+                    (EnableAutomaticAreaZoom && AreaZoomModifierKeys.All(x => Keyboard.Modifiers.HasFlag(x)))))
                 {
                     var p = e.GetPosition(this);
                     _selectionEnd = FromLocalToLatLng((int)p.X, (int)p.Y);
@@ -2030,15 +2032,13 @@ namespace GMap.NET.WindowsPresentation
             }
         }
 
-        /// <summary>
-        ///     if true, selects area just by holding mouse and moving
-        /// </summary>
-        public bool DisableAltForSelection = false;
+        public bool EnableAutomaticAreaSelection = true;
+        public ModifierKeys[] AreaSelectionModifierKeys = new[] { ModifierKeys.Alt };
 
-        /// <summary>
-        ///     if true, zooms to an area just by holding mouse and moving
-        /// </summary>
-        public bool DisableShiftForZoom = false;
+        public bool EnableAutomaticAreaZoom = true;
+        public ModifierKeys[] AreaZoomModifierKeys = new[] { ModifierKeys.Shift };
+
+        public bool AllowAreaSelectionWithNonDragMouseButton = false;
 
         protected override void OnStylusDown(StylusDownEventArgs e)
         {
@@ -2610,6 +2610,16 @@ namespace GMap.NET.WindowsPresentation
         }
 
         /// <summary>
+        ///     clears the currently selected area
+        /// </summary>
+        public void ClearSelectedArea()
+        {
+            SelectedArea = RectLatLng.Empty;
+            _selectionStart = PointLatLng.Empty;
+            _selectionEnd = PointLatLng.Empty;
+        }
+
+        /// <summary>
         ///     gets position using geocoder
         /// </summary>
         /// <param name="keys"></param>
@@ -2964,5 +2974,5 @@ namespace GMap.NET.WindowsPresentation
         XY
     }
 
-    public delegate void SelectionChange(RectLatLng selection, bool zoomToFit);
+    public delegate void SelectionChange(RectLatLng selection, bool zoomToFit, PointLatLng selectionStart, PointLatLng selectionEnd);
 }
