@@ -98,6 +98,15 @@ namespace GMap.NET.MapProviders
         public static readonly GoogleKoreaSatelliteMapProvider GoogleKoreaSatelliteMap = GoogleKoreaSatelliteMapProvider.Instance;
         public static readonly GoogleKoreaHybridMapProvider GoogleKoreaHybridMap = GoogleKoreaHybridMapProvider.Instance;
 
+        public static readonly AzureMapProvider AzureMap = AzureMapProvider.Instance;
+        public static readonly AzureSatelliteMapProvider AzureSatelliteMap = AzureSatelliteMapProvider.Instance;
+        public static readonly AzureHybridMapProvider AzureHybridMap = AzureHybridMapProvider.Instance;
+        public static readonly AzureDarkMapProvider AzureDarkMap = AzureDarkMapProvider.Instance;
+        public static readonly AzureTerrainMapProvider AzureTerrainMap = AzureTerrainMapProvider.Instance;
+        public static readonly AzureTrafficMapProvider AzureTrafficMap = AzureTrafficMapProvider.Instance;
+        public static readonly AzureWeatherInfraredMapProvider AzureWeatherInfraredMap = AzureWeatherInfraredMapProvider.Instance;
+        public static readonly AzureWeatherRadarMapProvider AzureWeatherRadarMap = AzureWeatherRadarMapProvider.Instance;
+
         public static readonly NearMapProvider NearMap = NearMapProvider.Instance;
         public static readonly NearSatelliteMapProvider NearSatelliteMap = NearSatelliteMapProvider.Instance;
         public static readonly NearHybridMapProvider NearHybridMap = NearHybridMapProvider.Instance;
