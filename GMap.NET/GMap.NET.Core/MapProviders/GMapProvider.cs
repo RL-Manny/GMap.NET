@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using GMap.NET.Internals;
 using GMap.NET.MapProviders.AMap;
+using GMap.NET.MapProviders.OpenStreetMap;
 using GMap.NET.Projections;
 
 namespace GMap.NET.MapProviders
@@ -57,6 +58,8 @@ namespace GMap.NET.MapProviders
         public static readonly OpenCycleTransportMapProvider OpenCycleTransportMap = OpenCycleTransportMapProvider.Instance;
 
         public static readonly OpenStreetMapProvider OpenStreetMap = OpenStreetMapProvider.Instance;
+        public static readonly OpenStreetMapSatelliteProvider OpenStreetMapSatellite = OpenStreetMapSatelliteProvider.Instance;
+        public static readonly OpenStreetMapHybridProvider OpenStreetMapHybrid = OpenStreetMapHybridProvider.Instance;
         public static readonly OpenStreetMapGraphHopperProvider OpenStreetMapGraphHopper = OpenStreetMapGraphHopperProvider.Instance;
         public static readonly OpenStreet4UMapProvider OpenStreet4UMap = OpenStreet4UMapProvider.Instance;
         public static readonly OpenStreetMapQuestProvider OpenStreetMapQuest = OpenStreetMapQuestProvider.Instance;
