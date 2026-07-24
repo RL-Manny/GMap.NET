@@ -17,7 +17,7 @@ namespace GMap.NET.MapProviders.AMap
 
         static AMapSatelliteProvider()
         {
-            UrlFormat = "http://webst0{0}.is.autonavi.com/appmaptile?style=6&x={1}&y={2}&z={3}";
+            UrlFormat = "https://wprd0{0}.is.autonavi.com/appmaptile?style=6&x={1}&y={2}&z={3}";
             Instance = new AMapSatelliteProvider();
         }
 

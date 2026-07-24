@@ -17,7 +17,7 @@ namespace GMap.NET.MapProviders.AMap
 
         static AMapHybridProvider()
         {
-            UrlFormat = "http://webst0{0}.is.autonavi.com/appmaptile?style=8&x={1}&y={2}&z={3}";
+            UrlFormat = "https://wprd0{0}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={1}&y={2}&z={3}";
             Instance = new AMapHybridProvider();
         }
 
