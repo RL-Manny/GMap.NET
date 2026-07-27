@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using GMap.NET.MapProviders;
@@ -304,6 +305,57 @@ namespace GMap.NET.Internals
         ///     retry count to get tile
         /// </summary>
         public int RetryLoadTile = 0;
+
+        /// <summary>
+        ///     pause between tile retries, in milliseconds
+        /// </summary>
+        internal const int RetryBackoffMs = 400;
+
+        /// <summary>
+        ///     true for a one-off failure worth retrying, false when the provider is down or the tile doesn't exist
+        /// </summary>
+        internal bool ShouldRetryTile(Exception ex)
+        {
+            // empty result, no error - a quick retry might get it
+            if (ex == null)
+            {
+                return true;
+            }
+
+            if (ex is WebException webException)
+            {
+                if (webException.Response is HttpWebResponse httpResponse)
+                {
+                    switch ((int)httpResponse.StatusCode)
+                    {
+                        case 429: // busy / rate limited
+                        case 500:
+                        case 502:
+                        case 503:
+                        case 504:
+                            return true; // server hiccup
+                        default:
+                            return false; // 404 / 403 etc. - retry won't help
+                    }
+                }
+
+                // no response - retry a dropped request, but not an unreachable host
+                switch (webException.Status)
+                {
+                    case WebExceptionStatus.Timeout:
+                    case WebExceptionStatus.ReceiveFailure:
+                    case WebExceptionStatus.SendFailure:
+                    case WebExceptionStatus.ConnectionClosed:
+                    case WebExceptionStatus.KeepAliveFailure:
+                    case WebExceptionStatus.PipelineFailure:
+                        return true;
+                    default:
+                        return false; // can't resolve / connect - provider is down
+                }
+            }
+
+            return false;
+        }
 
         /// <summary>
         ///     how many levels of tiles are staying decompressed in memory
@@ -946,11 +998,18 @@ namespace GMap.NET.Internals
 
                     foreach (var tl in task.Core._provider.Overlays)
                     {
+                        PureImage img = null;
+                        Exception ex = null;
+
+                        // load the tile, retrying only one-off failures (see ShouldRetryTile)
                         int retry = 0;
+                        bool retryable;
+
                         do
                         {
-                            PureImage img = null;
-                            Exception ex = null;
+                            img = null;
+                            ex = null;
+                            retryable = false;
 
                             if (task.Zoom >= task.Core._provider.MinZoom &&
                                 (!task.Core._provider.MaxZoom.HasValue || task.Zoom <= task.Core._provider.MaxZoom))
@@ -993,82 +1052,77 @@ namespace GMap.NET.Internals
                                 }
                             }
 
-                            // check for parent tiles if not found
-                            if (img == null && task.Core._okZoom > 0 && task.Core.FillEmptyTiles &&
-                                task.Core.Provider.Projection is MercatorProjection)
+                            // retry only if it's worth it and attempts remain
+                            if (img == null)
                             {
-                                int zoomOffset = task.Zoom > task.Core._okZoom ? task.Zoom - task.Core._okZoom : 1;
-                                long ix = 0;
-                                var parentTile = GPoint.Empty;
+                                retryable = task.Core.ShouldRetryTile(ex);
 
-                                while (img == null && zoomOffset < task.Zoom)
+                                if (retryable && retry + 1 < task.Core.RetryLoadTile)
                                 {
-                                    ix = (long)Math.Pow(2, zoomOffset);
-                                    parentTile = new GPoint(task.Pos.X / ix, task.Pos.Y / ix);
-                                    img = GMaps.Instance.GetImageFrom(tl, parentTile, task.Zoom - zoomOffset++, out ex);
+                                    Debug.WriteLine(ctid + " - ProcessLoadTask: " + task +
+                                                    " -> empty tile, transient error, retry " + retry);
+                                    Thread.Sleep(RetryBackoffMs);
                                 }
+                            }
+                        } while (img == null && retryable && ++retry < task.Core.RetryLoadTile);
 
-                                if (img != null)
-                                {
-                                    // offsets in quadrant
-                                    long xOff = Math.Abs(task.Pos.X - parentTile.X * ix);
-                                    long yOff = Math.Abs(task.Pos.Y - parentTile.Y * ix);
+                        // still nothing - fall back to a scaled parent tile
+                        if (img == null && task.Core._okZoom > 0 && task.Core.FillEmptyTiles &&
+                            task.Core.Provider.Projection is MercatorProjection)
+                        {
+                            int zoomOffset = task.Zoom > task.Core._okZoom ? task.Zoom - task.Core._okZoom : 1;
+                            long ix = 0;
+                            var parentTile = GPoint.Empty;
 
-                                    img.IsParent = true;
-                                    img.Ix = ix;
-                                    img.Xoff = xOff;
-                                    img.Yoff = yOff;
-
-                                    // wpf
-                                    //var geometry = new RectangleGeometry(new Rect(Core.tileRect.X + 0.6, Core.tileRect.Y + 0.6, Core.tileRect.Width + 0.6, Core.tileRect.Height + 0.6));
-                                    //var parentImgRect = new Rect(Core.tileRect.X - Core.tileRect.Width * Xoff + 0.6, Core.tileRect.Y - Core.tileRect.Height * Yoff + 0.6, Core.tileRect.Width * Ix + 0.6, Core.tileRect.Height * Ix + 0.6);
-
-                                    // gdi+
-                                    //System.Drawing.Rectangle dst = new System.Drawing.Rectangle((int)Core.tileRect.X, (int)Core.tileRect.Y, (int)Core.tileRect.Width, (int)Core.tileRect.Height);
-                                    //System.Drawing.RectangleF srcRect = new System.Drawing.RectangleF((float)(Xoff * (img.Img.Width / Ix)), (float)(Yoff * (img.Img.Height / Ix)), (img.Img.Width / Ix), (img.Img.Height / Ix));
-                                }
+                            while (img == null && zoomOffset < task.Zoom)
+                            {
+                                ix = (long)Math.Pow(2, zoomOffset);
+                                parentTile = new GPoint(task.Pos.X / ix, task.Pos.Y / ix);
+                                img = GMaps.Instance.GetImageFrom(tl, parentTile, task.Zoom - zoomOffset++, out ex);
                             }
 
                             if (img != null)
                             {
-                                Debug.WriteLine(ctid + " - tile loaded: " + img.Data.Length / 1024 + "KB, " + task);
-                                {
-                                    t.AddOverlay(img);
-                                }
-                                break;
-                            }
-                            else
-                            {
-                                if (ex != null && task.Core.FailedLoads != null)
-                                {
-                                    lock (task.Core.FailedLoads)
-                                    {
-                                        if (!task.Core.FailedLoads.ContainsKey(task))
-                                        {
-                                            task.Core.FailedLoads.Add(task, ex);
+                                // offsets in quadrant
+                                long xOff = Math.Abs(task.Pos.X - parentTile.X * ix);
+                                long yOff = Math.Abs(task.Pos.Y - parentTile.Y * ix);
 
-                                            if (task.Core.OnEmptyTileError != null)
+                                img.IsParent = true;
+                                img.Ix = ix;
+                                img.Xoff = xOff;
+                                img.Yoff = yOff;
+                            }
+                        }
+
+                        if (img != null)
+                        {
+                            Debug.WriteLine(ctid + " - tile loaded: " + img.Data.Length / 1024 + "KB, " + task);
+                            {
+                                t.AddOverlay(img);
+                            }
+                        }
+                        else
+                        {
+                            if (ex != null && task.Core.FailedLoads != null)
+                            {
+                                lock (task.Core.FailedLoads)
+                                {
+                                    if (!task.Core.FailedLoads.ContainsKey(task))
+                                    {
+                                        task.Core.FailedLoads.Add(task, ex);
+
+                                        if (task.Core.OnEmptyTileError != null)
+                                        {
+                                            if (!task.Core._raiseEmptyTileError)
                                             {
-                                                if (!task.Core._raiseEmptyTileError)
-                                                {
-                                                    task.Core._raiseEmptyTileError = true;
-                                                    task.Core.OnEmptyTileError(task.Zoom, task.Pos);
-                                                }
+                                                task.Core._raiseEmptyTileError = true;
+                                                task.Core.OnEmptyTileError(task.Zoom, task.Pos);
                                             }
                                         }
                                     }
                                 }
-
-                                if (task.Core.RetryLoadTile > 0)
-                                {
-                                    Debug.WriteLine(ctid + " - ProcessLoadTask: " + task + " -> empty tile, retry " +
-                                                    retry);
-                                    {
-                                        Thread.Sleep(1111);
-                                    }
-                                }
                             }
-                        } while (++retry < task.Core.RetryLoadTile);
+                        }
                     }
 
                     if (t.HasAnyOverlays && task.Core.IsStarted)

@@ -330,6 +330,28 @@ namespace GMap.NET.MapProviders
         public readonly int DbId;
 
         /// <summary>
+        ///     id used for caching. Defaults to <see cref="DbId"/>; versioned providers (e.g. Google) mix the version
+        ///     in so old tiles are dropped when the version changes
+        /// </summary>
+        public virtual int CacheId => DbId;
+
+        /// <summary>
+        ///     hash of a version string that stays the same between runs (string.GetHashCode does not)
+        /// </summary>
+        protected static int StableVersionHash(string version)
+        {
+            if (string.IsNullOrEmpty(version))
+            {
+                return 0;
+            }
+
+            using (var hashProvider = new SHA1CryptoServiceProvider())
+            {
+                return BitConverter.ToInt32(hashProvider.ComputeHash(Encoding.UTF8.GetBytes(version)), 0);
+            }
+        }
+
+        /// <summary>
         ///     area of map
         /// </summary>
         public RectLatLng? Area;
@@ -434,7 +456,16 @@ namespace GMap.NET.MapProviders
         protected virtual bool CheckTileImageHttpResponse(WebResponse response)
         {
             //Debug.WriteLine(response.StatusCode + "/" + response.StatusDescription + "/" + response.ContentType + " -> " + response.ResponseUri);
-            return response.ContentType.Contains(responseContentType);
+
+            // some servers return an error tile as an image, so reject anything that isn't a success status
+            if (response is HttpWebResponse http && (int)http.StatusCode / 100 != 2)
+            {
+                Debug.WriteLine("CheckTileImageHttpResponse[bad status " + (int)http.StatusCode + "]: " +
+                                response.ResponseUri);
+                return false;
+            }
+
+            return response.ContentType != null && response.ContentType.Contains(responseContentType);
         }
 
         string _authorization = string.Empty;

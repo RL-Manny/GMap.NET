@@ -574,7 +574,7 @@ namespace GMap.NET.CacheProviders
         #endregion
 
         static readonly string singleSqlSelect =
-            "SELECT Tile FROM main.TilesData WHERE id = (SELECT id FROM main.Tiles WHERE X={0} AND Y={1} AND Zoom={2} AND Type={3})";
+            "SELECT main.TilesData.Tile, main.Tiles.CacheTime FROM main.TilesData INNER JOIN main.Tiles ON main.TilesData.id = main.Tiles.id WHERE main.Tiles.X={0} AND main.Tiles.Y={1} AND main.Tiles.Zoom={2} AND main.Tiles.Type={3}";
 
         static readonly string singleSqlInsert =
             "INSERT INTO main.Tiles(X, Y, Zoom, Type, CacheTime) VALUES(@p1, @p2, @p3, @p4, @p5)";
@@ -606,7 +606,7 @@ namespace GMap.NET.CacheProviders
             {
                 _finnalSqlSelect +=
                     string.Format(
-                        "\nUNION SELECT Tile FROM db{0}.TilesData WHERE id = (SELECT id FROM db{0}.Tiles WHERE X={{0}} AND Y={{1}} AND Zoom={{2}} AND Type={{3}})",
+                        "\nUNION SELECT db{0}.TilesData.Tile, db{0}.Tiles.CacheTime FROM db{0}.TilesData INNER JOIN db{0}.Tiles ON db{0}.TilesData.id = db{0}.Tiles.id WHERE db{0}.Tiles.X={{0}} AND db{0}.Tiles.Y={{1}} AND db{0}.Tiles.Zoom={{2}} AND db{0}.Tiles.Type={{3}}",
                         i);
                 _attachSqlQuery += string.Format("\nATTACH '{0}' as db{1};", c, i);
                 _detachSqlQuery += string.Format("\nDETACH DATABASE db{0};", i);
@@ -748,6 +748,12 @@ namespace GMap.NET.CacheProviders
                                         if (GMapProvider.TileImageProxy != null)
                                         {
                                             ret = GMapProvider.TileImageProxy.FromArray(tile);
+
+                                            // read the cache time (column 1) - must come after the tile bytes
+                                            if (ret != null && !rd.IsDBNull(1))
+                                            {
+                                                ret.CacheTime = rd.GetDateTime(1);
+                                            }
                                         }
                                     }
                                 }

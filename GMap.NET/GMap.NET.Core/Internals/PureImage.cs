@@ -33,6 +33,11 @@ namespace GMap.NET
     {
         public MemoryStream Data;
 
+        /// <summary>
+        ///     when this tile was cached, or null if it wasn't read from the cache. Used to check if it's stale.
+        /// </summary>
+        public DateTime? CacheTime;
+
         internal bool IsParent;
         internal long Ix;
         internal long Xoff;

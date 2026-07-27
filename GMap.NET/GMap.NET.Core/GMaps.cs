@@ -56,6 +56,12 @@ namespace GMap.NET
         public bool UseMemoryCache = true;
 
         /// <summary>
+        ///     how long a cached tile stays fresh. Older tiles are re-fetched when online, but still used when the
+        ///     server can't be reached. Null (the default) turns this off and keeps cached tiles forever.
+        /// </summary>
+        public TimeSpan? TileCacheTtl = null;
+
+        /// <summary>
         ///     primary cache provider, by default: ultra fast SQLite!
         /// </summary>
         public PureImageCache PrimaryCache
@@ -705,7 +711,8 @@ namespace GMap.NET
 
             try
             {
-                var rtile = new RawTile(provider.DbId, pos, zoom);
+                int cacheId = provider.CacheId;
+                var rtile = new RawTile(cacheId, pos, zoom);
 
                 // let't check memory first
                 if (UseMemoryCache)
@@ -720,7 +727,7 @@ namespace GMap.NET
                             {
 #if DEBUG
                                 Debug.WriteLine("Image disposed in MemoryCache o.O, should never happen ;} " +
-                                                new RawTile(provider.DbId, pos, zoom));
+                                                new RawTile(cacheId, pos, zoom));
                                 if (Debugger.IsAttached)
                                 {
                                     Debugger.Break();
@@ -733,6 +740,11 @@ namespace GMap.NET
 
                 if (ret == null)
                 {
+                    // a fresh cached tile is used straight away; a stale one is kept as a fallback while we try the
+                    // server, in case the server can't be reached
+                    PureImage staleFromPrimary = null;
+                    PureImage staleFromSecondary = null;
+
                     if (Mode != AccessMode.ServerOnly && !provider.BypassCache)
                     {
                         if (PrimaryCache != null)
@@ -743,19 +755,24 @@ namespace GMap.NET
                                 Interlocked.Exchange(ref _readingCache, 5);
                             }
 
-                            ret = PrimaryCache.GetImageFromCache(provider.DbId, pos, zoom);
-                            if (ret != null)
+                            var img = PrimaryCache.GetImageFromCache(cacheId, pos, zoom);
+                            if (img != null)
                             {
-                                if (UseMemoryCache)
+                                if (!IsTileStale(img))
                                 {
-                                    MemoryCache.AddTileToMemoryCache(rtile, ret.Data.GetBuffer());
+                                    if (UseMemoryCache)
+                                    {
+                                        MemoryCache.AddTileToMemoryCache(rtile, img.Data.GetBuffer());
+                                    }
+
+                                    return img;
                                 }
 
-                                return ret;
+                                staleFromPrimary = img;
                             }
                         }
 
-                        if (SecondaryCache != null)
+                        if (staleFromPrimary == null && SecondaryCache != null)
                         {
                             // hold writer for 5s
                             if (_cacheOnIdleRead)
@@ -763,16 +780,21 @@ namespace GMap.NET
                                 Interlocked.Exchange(ref _readingCache, 5);
                             }
 
-                            ret = SecondaryCache.GetImageFromCache(provider.DbId, pos, zoom);
-                            if (ret != null)
+                            var img = SecondaryCache.GetImageFromCache(cacheId, pos, zoom);
+                            if (img != null)
                             {
-                                if (UseMemoryCache)
+                                if (!IsTileStale(img))
                                 {
-                                    MemoryCache.AddTileToMemoryCache(rtile, ret.Data.GetBuffer());
+                                    if (UseMemoryCache)
+                                    {
+                                        MemoryCache.AddTileToMemoryCache(rtile, img.Data.GetBuffer());
+                                    }
+
+                                    EnqueueCacheTask(new CacheQueueItem(rtile, img.Data.GetBuffer(), CacheUsage.First));
+                                    return img;
                                 }
 
-                                EnqueueCacheTask(new CacheQueueItem(rtile, ret.Data.GetBuffer(), CacheUsage.First));
-                                return ret;
+                                staleFromSecondary = img;
                             }
                         }
                     }
@@ -780,20 +802,47 @@ namespace GMap.NET
                     if (Mode != AccessMode.CacheOnly)
                     {
                         ret = provider.GetTileImage(pos, zoom);
-                        {
-                            // Enqueue Cache
-                            if (ret != null)
-                            {
-                                if (UseMemoryCache)
-                                {
-                                    MemoryCache.AddTileToMemoryCache(rtile, ret.Data.GetBuffer());
-                                }
 
-                                if (Mode != AccessMode.ServerOnly && !provider.BypassCache)
-                                {
-                                    EnqueueCacheTask(new CacheQueueItem(rtile, ret.Data.GetBuffer(), CacheUsage.Both));
-                                }
+                        if (ret != null)
+                        {
+                            // got a fresh tile - drop the old copy if we had one
+                            (staleFromPrimary ?? staleFromSecondary)?.Dispose();
+
+                            // cache it
+                            if (UseMemoryCache)
+                            {
+                                MemoryCache.AddTileToMemoryCache(rtile, ret.Data.GetBuffer());
                             }
+
+                            if (Mode != AccessMode.ServerOnly && !provider.BypassCache)
+                            {
+                                EnqueueCacheTask(new CacheQueueItem(rtile, ret.Data.GetBuffer(), CacheUsage.Both));
+                            }
+                        }
+                        else if (staleFromPrimary != null || staleFromSecondary != null)
+                        {
+                            // server unreachable - use the stale tile rather than showing nothing
+                            ret = staleFromPrimary ?? staleFromSecondary;
+
+                            if (UseMemoryCache)
+                            {
+                                MemoryCache.AddTileToMemoryCache(rtile, ret.Data.GetBuffer());
+                            }
+
+                            if (staleFromPrimary == null && Mode != AccessMode.ServerOnly && !provider.BypassCache)
+                            {
+                                EnqueueCacheTask(new CacheQueueItem(rtile, ret.Data.GetBuffer(), CacheUsage.First));
+                            }
+                        }
+                    }
+                    else if (staleFromPrimary != null || staleFromSecondary != null)
+                    {
+                        // cache-only mode: a stale tile is all we have
+                        ret = staleFromPrimary ?? staleFromSecondary;
+
+                        if (UseMemoryCache)
+                        {
+                            MemoryCache.AddTileToMemoryCache(rtile, ret.Data.GetBuffer());
                         }
                     }
                     else
@@ -810,6 +859,22 @@ namespace GMap.NET
             }
 
             return ret;
+        }
+
+        /// <summary>
+        ///     whether a cached tile is older than <see cref="TileCacheTtl"/>. Tiles with no known age, and all tiles
+        ///     when no TTL is set, count as fresh.
+        /// </summary>
+        private bool IsTileStale(PureImage image)
+        {
+            var ttl = TileCacheTtl;
+
+            if (ttl == null || image == null || image.CacheTime == null)
+            {
+                return false;
+            }
+
+            return DateTime.Now - image.CacheTime.Value > ttl.Value;
         }
 
         private readonly Exception _noDataException = new Exception("No data in local tile cache...");

@@ -87,6 +87,14 @@ namespace GMap.NET.MapProviders
 
         #endregion
 
+        /// <summary>
+        ///     this provider's tile version, mixed into the cache id so old-version tiles are dropped when it changes
+        /// </summary>
+        protected virtual string CacheVersion => null;
+
+        public override int CacheId =>
+            string.IsNullOrEmpty(CacheVersion) ? DbId : DbId ^ StableVersionHash(CacheVersion);
+
         public bool TryCorrectVersion = true;
         static bool _init;
 
@@ -121,6 +129,11 @@ namespace GMap.NET.MapProviders
                     {
                         #region -- match versions --
 
+                        // did we find the versions we need? if not, retry later rather than use the stale defaults
+                        // (a stale satellite version is what makes Hybrid blurry and Satellite error out)
+                        bool mapMatched = false;
+                        bool satelliteMatched = false;
+
                         var reg = new Regex(string.Format(@"https?://mts?\d.{0}/maps/vt\?lyrs=m@(\d*)", Server),
                             RegexOptions.IgnoreCase);
                         var mat = reg.Match(html);
@@ -132,6 +145,7 @@ namespace GMap.NET.MapProviders
 
                             if (count > 0)
                             {
+                                mapMatched = true;
                                 string ver = string.Format("m@{0}", gc[1].Value);
                                 string old = GMapProviders.GoogleMap.Version;
 
@@ -168,6 +182,7 @@ namespace GMap.NET.MapProviders
 
                             if (count > 0)
                             {
+                                satelliteMatched = true;
                                 string ver = gc[1].Value;
                                 string old = GMapProviders.GoogleSatelliteMap.Version;
 
@@ -215,7 +230,15 @@ namespace GMap.NET.MapProviders
 
                         #endregion
 
-                        _init = true; // try it only once
+                        // only stop retrying once we've got the versions we need
+                        if (mapMatched && satelliteMatched)
+                        {
+                            _init = true;
+                        }
+                        else
+                        {
+                            IsInitialized = false;
+                        }
                     }
                     else
                     {
@@ -1294,6 +1317,8 @@ namespace GMap.NET.MapProviders
         }
 
         public string Version = "m@333000000";
+
+        protected override string CacheVersion => Version;
 
         #region GMapProvider Members
 

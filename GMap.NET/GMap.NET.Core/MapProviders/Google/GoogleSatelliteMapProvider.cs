@@ -20,6 +20,8 @@ namespace GMap.NET.MapProviders
 
         public string Version = "192";
 
+        protected override string CacheVersion => Version;
+
         #region GMapProvider Members
 
         public override Guid Id
