@@ -928,33 +928,484 @@ namespace GMap.NET.WindowsPresentation
         {
             var marker = s as GMapMarker;
 
-            if (s.Points != null && s.Points.Count > 1)
+            if (s.Points == null || s.Points.Count <= 1)
             {
-                marker.Position = s.Points[0];
-                var localPath = new List<Point>(s.Points.Count);
-                var offset = FromLatLngToLocal(s.Points[0]);
+                marker.Shape = null;
+                return;
+            }
 
-                foreach (var i in s.Points)
-                {
-                    var p = FromLatLngToLocal(i);
-                    localPath.Add(new Point(p.X - offset.X, p.Y - offset.Y));
-                }
+            // Routes are clipped to the visible area first. Local coordinates grow with zoom, and
+            // WPF stops drawing a Path once they get too large, so a long route would vanish at
+            // high zoom.
+            if (s is GMapRoute gMapRoute && TryRegenerateClippedRoute(gMapRoute, marker))
+            {
+                return;
+            }
 
-                var shape = s.CreatePath(localPath, true);
+            // Polygons, and routes before the control has been laid out, use the unclipped path
+            marker.Position = s.Points[0];
+            var localPath = new List<Point>(s.Points.Count);
+            var offset = FromLatLngToLocal(s.Points[0]);
 
-                if (marker.Shape is Path)
-                {
-                    (marker.Shape as Path).Data = shape.Data;
-                }
-                else
-                {
-                    marker.Shape = shape;
-                }
+            foreach (var i in s.Points)
+            {
+                var p = FromLatLngToLocal(i);
+                localPath.Add(new Point(p.X - offset.X, p.Y - offset.Y));
+            }
+
+            var shape = s.CreatePath(localPath, true);
+
+            if (marker.Shape is Path)
+            {
+                (marker.Shape as Path).Data = shape.Data;
             }
             else
             {
-                marker.Shape = null;
+                marker.Shape = shape;
             }
+        }
+
+        /// <summary>
+        ///     builds a route's shape from just the part of it near the visible area, thinning out
+        ///     detail too small to see. returns false if the route cannot be clipped yet, so the
+        ///     caller can fall back to the unclipped path
+        /// </summary>
+        bool TryRegenerateClippedRoute(GMapRoute route, GMapMarker marker)
+        {
+            double w = ActualWidth, h = ActualHeight;
+            if (w <= 0 || h <= 0)
+            {
+                return false;
+            }
+
+            if (route.Points.Count < 2 || MapProvider == null || MapProvider.Projection == null)
+            {
+                return false;
+            }
+
+            int zoom = _core.Zoom;
+            var projection = MapProvider.Projection;
+
+            // One world pixel is 1/scale local pixels, so distances need converting to match
+            double scale = MapScaleTransform != null ? Math.Max(MapScaleTransform.ScaleX, 1e-6) : 1.0;
+
+            // Visible area in world pixels, found by converting the four screen corners. Going
+            // via the existing conversions keeps any scale or rotation transform accounted for.
+            double viewMinX = double.MaxValue, viewMinY = double.MaxValue;
+            double viewMaxX = double.MinValue, viewMaxY = double.MinValue;
+            var corners = new[]
+            {
+                FromLocalToLatLng(0, 0),
+                FromLocalToLatLng((int)w, 0),
+                FromLocalToLatLng(0, (int)h),
+                FromLocalToLatLng((int)w, (int)h)
+            };
+
+            foreach (var c in corners)
+            {
+                var pc = projection.FromLatLngToPixel(c, zoom);
+                if (pc.X < viewMinX) viewMinX = pc.X;
+                if (pc.X > viewMaxX) viewMaxX = pc.X;
+                if (pc.Y < viewMinY) viewMinY = pc.Y;
+                if (pc.Y > viewMaxY) viewMaxY = pc.Y;
+            }
+
+            // The existing shape already holds everything inside the box it was clipped to, so
+            // while the view stays in that box it is still correct and only the marker's canvas
+            // position needs to move. This is what makes panning a dense route cheap.
+            if (route.GeometryValid
+                && route.CacheZoom == zoom
+                && route.CacheCount == route.Points.Count
+                && route.GeometryScale == scale
+                && route.GeometryRotated == IsRotated
+                && viewMinX >= route.ClipMinX && viewMaxX <= route.ClipMaxX
+                && viewMinY >= route.ClipMinY && viewMaxY <= route.ClipMaxY)
+            {
+                marker.Position = route.GeometryAnchor;
+                return true;
+            }
+
+            EnsureRouteCache(route, zoom);
+
+            // Clip to a box one screen larger than the view, so it can be panned a whole screen
+            // before the geometry needs rebuilding
+            double margin = Math.Max(w, h) / scale;
+            double minX = viewMinX - margin;
+            double minY = viewMinY - margin;
+            double maxX = viewMaxX + margin;
+            double maxY = viewMaxY + margin;
+
+            // Raise the tolerance if the result is still too detailed to draw smoothly. Laps of a
+            // circuit retrace the same pixels, so distance alone cannot thin a multi-lap route.
+            double toleranceSquared = RouteSimplifyToleranceSquared / (scale * scale);
+            List<List<Point>> figures;
+            int total = 0;
+
+            for (int attempt = 0; ; attempt++)
+            {
+                figures = ClipAndSimplify(route.CacheX, route.CacheY, route.CacheCount,
+                    minX, minY, maxX, maxY, toleranceSquared);
+
+                total = 0;
+                foreach (var fig in figures)
+                {
+                    total += fig.Count;
+                }
+
+                if (total <= RouteMaxRenderedPoints || attempt >= 3)
+                {
+                    break;
+                }
+
+                // Point count scales with 1/distance, and the tolerance is a squared distance
+                double factor = (double)total / RouteMaxRenderedPoints;
+                toleranceSquared *= factor * factor;
+            }
+
+            // Remember the box this shape covers, so pans within it need no work
+            route.ClipMinX = minX;
+            route.ClipMinY = minY;
+            route.ClipMaxX = maxX;
+            route.ClipMaxY = maxY;
+            route.GeometryScale = scale;
+            route.GeometryRotated = IsRotated;
+            route.GeometryValid = true;
+
+            if (figures.Count == 0)
+            {
+                // Route is outside the box. Empty the geometry rather than dropping the Path,
+                // which carries the styling applied when the route was added.
+                if (marker.Shape is Path offscreenPath)
+                {
+                    offscreenPath.Data = null;
+                }
+                else
+                {
+                    marker.Shape = null;
+                }
+
+                return true;
+            }
+
+            // Anchor on the centre of the clip box. It has to be a fixed location rather than the
+            // centre of the view, or marker.Position would change on every pan and force a
+            // rebuild. The anchor cancels out on screen because the geometry offset and the
+            // shape's canvas position both come from marker.Position.
+            var anchor = projection.FromPixelToLatLng(
+                new GPoint((long)((minX + maxX) / 2), (long)((minY + maxY) / 2)), zoom);
+            var offset = FromLatLngToLocal(anchor);
+            route.GeometryAnchor = anchor;
+
+            // Convert the kept points to local coordinates relative to the anchor. Mirrors
+            // FromLatLngToLocal - offset, then scale, then rotation - without the projection.
+            double offX = _core.RenderOffset.X - _core.CompensationOffset.X;
+            double offY = _core.RenderOffset.Y - _core.CompensationOffset.Y;
+
+            foreach (var fig in figures)
+            {
+                for (int i = 0; i < fig.Count; i++)
+                {
+                    var p = new Point(fig[i].X + offX, fig[i].Y + offY);
+
+                    if (MapScaleTransform != null)
+                    {
+                        p = MapScaleTransform.Transform(p);
+                    }
+
+                    if (IsRotated)
+                    {
+                        p = _rotationMatrix.Transform(p);
+                    }
+
+                    fig[i] = new Point(p.X - offset.X, p.Y - offset.Y);
+                }
+            }
+
+            marker.Position = anchor;
+
+            // Reuse the existing Path, which carries the styling applied when the route was added.
+            // Only its geometry changes, so there is no need to build a new Path and blur effect.
+            if (marker.Shape is Path existingPath)
+            {
+                existingPath.Data = BuildPolylineGeometry(figures);
+            }
+            else
+            {
+                var shape = route.CreatePath(figures[0], true);
+
+                if (figures.Count > 1)
+                {
+                    shape.Data = BuildPolylineGeometry(figures);
+                }
+
+                marker.Shape = shape;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        ///     squared distance in local pixels below which a route point is dropped, being too
+        ///     close to the last one kept to tell apart at the current zoom
+        /// </summary>
+        const double RouteSimplifyToleranceSquared = 1.0;
+
+        /// <summary>
+        ///     most points a single route's geometry may hold before the tolerance is raised
+        /// </summary>
+        const int RouteMaxRenderedPoints = 50000;
+
+        /// <summary>
+        ///     makes sure the route's cached world pixel coordinates match the given zoom
+        /// </summary>
+        void EnsureRouteCache(GMapRoute route, int zoom)
+        {
+            int count = route.Points.Count;
+
+            if (route.CacheZoom == zoom && route.CacheCount == count && route.CacheX != null)
+            {
+                return;
+            }
+
+            var projection = MapProvider.Projection;
+            double[] xs = new double[count];
+            double[] ys = new double[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                var p = projection.FromLatLngToPixel(route.Points[i], zoom);
+                xs[i] = p.X;
+                ys[i] = p.Y;
+            }
+
+            route.CacheX = xs;
+            route.CacheY = ys;
+            route.CacheCount = count;
+            route.CacheZoom = zoom;
+        }
+
+        /// <summary>
+        ///     clips a route to a rectangle and drops points closer together than the tolerance,
+        ///     in one pass. returns the parts left over as one or more separate lines
+        /// </summary>
+        static List<List<Point>> ClipAndSimplify(double[] xs, double[] ys, int count,
+            double minX, double minY, double maxX, double maxY, double toleranceSquared)
+        {
+            const double eps = 1e-6;
+            var result = new List<List<Point>>();
+
+            if (count < 2)
+            {
+                return result;
+            }
+
+            List<Point> current = null;
+            Point lastKept = default;
+            Point pending = default;
+            bool hasPending = false;
+
+            // Carried over each time round so every point is only classified once
+            int code0 = OutCode(xs[0], ys[0], minX, minY, maxX, maxY);
+
+            for (int i = 0; i + 1 < count; i++)
+            {
+                double x0 = xs[i], y0 = ys[i];
+                double x1 = xs[i + 1], y1 = ys[i + 1];
+                int code1 = OutCode(x1, y1, minX, minY, maxX, maxY);
+
+                // Both ends past the same edge, so it cannot cross the box
+                if ((code0 & code1) != 0)
+                {
+                    CloseFigure(result, ref current, ref lastKept, ref pending, ref hasPending);
+                    code0 = code1;
+                    continue;
+                }
+
+                // Fully inside, the common case, so skip the clipping maths and just thin it
+                if ((code0 | code1) == 0)
+                {
+                    if (current == null)
+                    {
+                        current = new List<Point> { new Point(x0, y0) };
+                        lastKept = current[0];
+                        hasPending = false;
+                    }
+
+                    double idx = x1 - lastKept.X;
+                    double idy = y1 - lastKept.Y;
+
+                    if (idx * idx + idy * idy >= toleranceSquared)
+                    {
+                        current.Add(new Point(x1, y1));
+                        lastKept = new Point(x1, y1);
+                        hasPending = false;
+                    }
+                    else
+                    {
+                        pending = new Point(x1, y1);
+                        hasPending = true;
+                    }
+
+                    code0 = code1;
+                    continue;
+                }
+
+                code0 = code1;
+
+                double dx = x1 - x0, dy = y1 - y0;
+                double t0 = 0.0, t1 = 1.0;
+
+                bool visible =
+                    ClipEdge(-dx, x0 - minX, ref t0, ref t1) &&
+                    ClipEdge(dx, maxX - x0, ref t0, ref t1) &&
+                    ClipEdge(-dy, y0 - minY, ref t0, ref t1) &&
+                    ClipEdge(dy, maxY - y0, ref t0, ref t1);
+
+                if (!visible)
+                {
+                    CloseFigure(result, ref current, ref lastKept, ref pending, ref hasPending);
+                    continue;
+                }
+
+                var a = new Point(x0 + t0 * dx, y0 + t0 * dy);
+                var b = new Point(x1 - (1.0 - t1) * dx, y1 - (1.0 - t1) * dy);
+
+                if (current == null ||
+                    Math.Abs(lastKept.X - a.X) > eps || Math.Abs(lastKept.Y - a.Y) > eps)
+                {
+                    // First segment in view, or it came back into the box somewhere else
+                    CloseFigure(result, ref current, ref lastKept, ref pending, ref hasPending);
+                    current = new List<Point> { a };
+                    lastKept = a;
+                }
+
+                bool leavesBox = t1 < 1.0 - eps;
+
+                if (leavesBox)
+                {
+                    // Keep the exact point it leaves on, then end the line
+                    current.Add(b);
+                    lastKept = b;
+                    hasPending = false;
+                    CloseFigure(result, ref current, ref lastKept, ref pending, ref hasPending);
+                    continue;
+                }
+
+                double ddx = b.X - lastKept.X;
+                double ddy = b.Y - lastKept.Y;
+
+                if (ddx * ddx + ddy * ddy >= toleranceSquared)
+                {
+                    current.Add(b);
+                    lastKept = b;
+                    hasPending = false;
+                }
+                else
+                {
+                    // Too close to see, but hold on to it so the line still ends in the right place
+                    pending = b;
+                    hasPending = true;
+                }
+            }
+
+            CloseFigure(result, ref current, ref lastKept, ref pending, ref hasPending);
+
+            return result;
+        }
+
+        /// <summary>
+        ///     ends the line being built, adding back any point held over by thinning so it
+        ///     finishes in the right place
+        /// </summary>
+        static void CloseFigure(List<List<Point>> result, ref List<Point> current,
+            ref Point lastKept, ref Point pending, ref bool hasPending)
+        {
+            if (current != null)
+            {
+                if (hasPending)
+                {
+                    current.Add(pending);
+                }
+
+                if (current.Count > 1)
+                {
+                    result.Add(current);
+                }
+            }
+
+            current = null;
+            hasPending = false;
+            lastKept = default(Point);
+            pending = default(Point);
+        }
+
+        /// <summary>
+        ///     builds a geometry holding one open line per clipped part of the route
+        /// </summary>
+        static StreamGeometry BuildPolylineGeometry(List<List<Point>> figures)
+        {
+            var geometry = new StreamGeometry();
+
+            using (var ctx = geometry.Open())
+            {
+                foreach (var fig in figures)
+                {
+                    if (fig.Count < 2)
+                    {
+                        continue;
+                    }
+
+                    ctx.BeginFigure(fig[0], false, false);
+                    ctx.PolyLineTo(fig, true, true);
+                }
+            }
+
+            geometry.Freeze();
+            return geometry;
+        }
+
+        /// <summary>
+        ///     one bit per edge of the box the point falls outside of, or zero if it is inside
+        /// </summary>
+        static int OutCode(double x, double y, double minX, double minY, double maxX, double maxY)
+        {
+            int code = 0;
+
+            if (x < minX) code |= 1;
+            else if (x > maxX) code |= 2;
+
+            if (y < minY) code |= 4;
+            else if (y > maxY) code |= 8;
+
+            return code;
+        }
+
+        /// <summary>
+        ///     trims the visible span of a segment against one edge of the box, or returns false if
+        ///     it falls entirely outside that edge
+        /// </summary>
+        static bool ClipEdge(double p, double q, ref double t0, ref double t1)
+        {
+            if (Math.Abs(p) < 1e-12)
+            {
+                // Runs parallel to this edge, so only outside if it is on the wrong side
+                return q >= 0;
+            }
+
+            double r = q / p;
+
+            if (p < 0)
+            {
+                if (r > t1) return false;
+                if (r > t0) t0 = r;
+            }
+            else
+            {
+                if (r < t0) return false;
+                if (r < t1) t1 = r;
+            }
+
+            return true;
         }
 
         void ForceUpdateOverlays(System.Collections.IEnumerable items)

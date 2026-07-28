@@ -21,6 +21,42 @@ namespace GMap.NET.WindowsPresentation
     {
         public List<PointLatLng> Points { get; set; }
 
+        #region -- render cache --
+
+        // World pixel coordinates of Points at CacheZoom. They only depend on the zoom, as panning
+        // just shifts them, so they are worked out once per zoom and reused - converting lat/lng
+        // costs a Sin and a Log per point, far too much to redo on every pan.
+        internal int CacheZoom = int.MinValue;
+        internal int CacheCount = -1;
+        internal double[] CacheX;
+        internal double[] CacheY;
+
+        // The box the geometry was clipped to. The shape holds every part of the route inside it,
+        // so it stays correct until the view leaves the box or the zoom changes.
+        internal bool GeometryValid;
+        internal double ClipMinX;
+        internal double ClipMinY;
+        internal double ClipMaxX;
+        internal double ClipMaxY;
+        internal double GeometryScale;
+        internal bool GeometryRotated;
+        internal PointLatLng GeometryAnchor;
+
+        /// <summary>
+        ///     throws away the cached coordinates and geometry so they are rebuilt on the next
+        ///     render. call after changing <see cref="Points" />
+        /// </summary>
+        public void InvalidateCache()
+        {
+            CacheZoom = int.MinValue;
+            CacheCount = -1;
+            CacheX = null;
+            CacheY = null;
+            GeometryValid = false;
+        }
+
+        #endregion
+
         public GMapRoute(IEnumerable<PointLatLng> points)
         {
             Points = new List<PointLatLng>(points);
@@ -30,6 +66,7 @@ namespace GMap.NET.WindowsPresentation
         {
             base.Clear();
             Points.Clear();
+            InvalidateCache();
         }
 
         /// <summary>
