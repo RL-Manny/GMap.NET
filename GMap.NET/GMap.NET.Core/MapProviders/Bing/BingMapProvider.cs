@@ -12,6 +12,7 @@ using GMap.NET.Projections;
 
 namespace GMap.NET.MapProviders
 {
+    [Obsolete("No longer supported, use Azure instead")]
     public abstract class BingMapProviderBase : GMapProvider, RoutingProvider, GeocodingProvider
     {
         public BingMapProviderBase()
@@ -168,11 +169,8 @@ namespace GMap.NET.MapProviders
         public bool TryCorrectVersion = true;
 
         /// <summary>
-        ///     set true to fall back on the key embedded in this library when no key has been supplied.
-        ///     FOR LEGAL AND COMMERCIAL USAGE SET YOUR OWN REGISTERED KEY
-        ///     http://msdn.microsoft.com/en-us/library/ff428642.aspx
-        ///     Defaults to false so that a missing key fails visibly rather than silently consuming
-        ///     the quota of the key this library ships with.
+        ///     When true, falls back on the key embedded in this library if no key is supplied.
+        ///     Set your own registered key for commercial use.
         /// </summary>
         public bool TryGetDefaultKey = false;
 
@@ -209,7 +207,6 @@ namespace GMap.NET.MapProviders
                             // Bing Maps WPF Control
                             // http://dev.virtualearth.net/webservices/v1/LoggingService/LoggingService.svc/Log?entry=0&auth={0}&fmt=1&type=3&group=MapControl&name=WPF&version=1.0.0.0&session=00000000-0000-0000-0000-000000000000&mkt=en-US
 
-                            // HTTPS, because this request carries the Bing key in its query string.
                             keyResponse = GetContentUsingHttp(string.Format(
                                 "https://dev.virtualearth.net/webservices/v1/LoggingService/LoggingService.svc/Log?entry=0&fmt=1&type=3&group=MapControl&name=AJAX&mkt=en-us&auth={0}&jsonp=microsoftMapsNetworkCallback",
                                 key));
@@ -343,7 +340,6 @@ namespace GMap.NET.MapProviders
             {
                 try
                 {
-                    // HTTPS, because this request carries the Bing session key in its query string.
                     string url = "https://dev.virtualearth.net/REST/V1/Imagery/Metadata/" + imageryType +
                                  "?output=xml&key=" + SessionId;
 
@@ -635,7 +631,6 @@ namespace GMap.NET.MapProviders
         }
 
         // example : http://dev.virtualearth.net/REST/V1/Routes/Driving?o=xml&wp.0=44.979035,-93.26493&wp.1=44.943828508257866,-93.09332862496376&optmz=distance&rpo=Points&key=[PROVIDEYOUROWNKEY!!]
-        // HTTPS, because these requests carry the Bing key in their query strings.
         static readonly string RouteUrlFormatPointLatLng =
             "https://dev.virtualearth.net/REST/V1/Routes/{0}?o=xml&wp.0={1},{2}&wp.1={3},{4}{5}&optmz=distance&rpo=Points&key={6}";
 
@@ -826,7 +821,6 @@ namespace GMap.NET.MapProviders
         }
 
         // http://dev.virtualearth.net/REST/v1/Locations/1%20Microsoft%20Way%20Redmond%20WA%2098052?o=xml&key=BingMapsKey
-        // HTTPS, because this request carries the Bing key in its query string.
         static readonly string GeocoderUrlFormat = "https://dev.virtualearth.net/REST/v1/Locations?{0}&o=xml&key={1}";
 
         #endregion GeocodingProvider
@@ -835,6 +829,7 @@ namespace GMap.NET.MapProviders
     /// <summary>
     ///     BingMapProvider provider
     /// </summary>
+    [Obsolete("No longer supported, use Azure instead")]
     public class BingMapProvider : BingMapProviderBase
     {
         public static readonly BingMapProvider Instance;

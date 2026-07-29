@@ -78,9 +78,16 @@ namespace GMap.NET.MapProviders
 
         public static readonly WikiMapiaMapProvider WikiMapiaMap = WikiMapiaMapProvider.Instance;
 
+        [Obsolete("No longer supported, use Azure instead")]
         public static readonly BingMapProvider BingMap = BingMapProvider.Instance;
+
+        [Obsolete("No longer supported, use Azure instead")]
         public static readonly BingSatelliteMapProvider BingSatelliteMap = BingSatelliteMapProvider.Instance;
+
+        [Obsolete("No longer supported, use Azure instead")]
         public static readonly BingHybridMapProvider BingHybridMap = BingHybridMapProvider.Instance;
+
+        [Obsolete("No longer supported, use Azure instead")]
         public static readonly BingOSMapProvider BingOSMap = BingOSMapProvider.Instance;
 
         public static readonly YahooMapProvider YahooMap = YahooMapProvider.Instance;

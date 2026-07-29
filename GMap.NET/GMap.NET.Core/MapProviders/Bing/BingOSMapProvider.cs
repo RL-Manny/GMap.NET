@@ -5,6 +5,7 @@ namespace GMap.NET.MapProviders
     /// <summary>
     ///     BingOSMapProvider provider
     /// </summary>
+    [Obsolete("No longer supported, use Azure instead")]
     public class BingOSMapProvider : BingMapProviderBase
     {
         public static readonly BingOSMapProvider Instance;

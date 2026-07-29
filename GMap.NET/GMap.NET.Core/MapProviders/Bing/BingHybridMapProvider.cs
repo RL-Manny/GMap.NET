@@ -5,6 +5,7 @@ namespace GMap.NET.MapProviders
     /// <summary>
     ///     BingHybridMap provider
     /// </summary>
+    [Obsolete("No longer supported, use Azure instead")]
     public class BingHybridMapProvider : BingMapProviderBase
     {
         public static readonly BingHybridMapProvider Instance;

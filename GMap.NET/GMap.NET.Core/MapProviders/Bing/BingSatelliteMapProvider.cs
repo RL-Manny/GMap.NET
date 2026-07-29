@@ -5,6 +5,7 @@ namespace GMap.NET.MapProviders
     /// <summary>
     ///     BingSatelliteMapProvider provider
     /// </summary>
+    [Obsolete("No longer supported, use Azure instead")]
     public class BingSatelliteMapProvider : BingMapProviderBase
     {
         public static readonly BingSatelliteMapProvider Instance;

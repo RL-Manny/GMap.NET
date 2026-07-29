@@ -53,9 +53,16 @@ namespace GMap.NET
         YahooLabels = 256,
         YahooHybrid = 333,
 
+        [Obsolete("No longer supported, use Azure instead")]
         BingMap = 444,
+
+        [Obsolete("No longer supported, use Azure instead")]
         BingMap_New = 455,
+
+        [Obsolete("No longer supported, use Azure instead")]
         BingSatellite = 555,
+
+        [Obsolete("No longer supported, use Azure instead")]
         BingHybrid = 666,
 
         ArcGIS_StreetMap_World_2D = 777,
