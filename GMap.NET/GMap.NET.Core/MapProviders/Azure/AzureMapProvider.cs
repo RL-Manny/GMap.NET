@@ -9,13 +9,26 @@ namespace GMap.NET.MapProviders
     public abstract class AzureMapProviderBase : GMapProvider
     {
         private string _subscriptionKey;
+
+        /// <summary>
+        /// Azure Maps subscription key. When it is empty the key is left out of the tile Uri, so a request factory
+        /// can supply it as a header instead.
+        /// </summary>
         public string SubscriptionKey
         {
             get
             {
-                if (string.IsNullOrEmpty(_subscriptionKey))
+                if (!string.IsNullOrEmpty(_subscriptionKey))
                 {
-                    _subscriptionKey = GMapProviders.AzureMap.SubscriptionKey;
+                    return _subscriptionKey;
+                }
+
+                // The other Azure providers share whatever key is set on AzureMap. AzureMap itself must not read its
+                // own property here, or the getter calls itself until the stack runs out.
+                var shared = GMapProviders.AzureMap;
+                if (shared != null && !ReferenceEquals(this, shared))
+                {
+                    _subscriptionKey = shared.SubscriptionKey;
                 }
 
                 return _subscriptionKey;

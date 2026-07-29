@@ -384,9 +384,18 @@ namespace GMap.NET.MapProviders
         public static bool IsSocksProxy = false;
 
         /// <summary>
-        ///     The web request factory
+        ///     The web request factory. Write only, so a caller cannot read back a factory that supplies credentials.
         /// </summary>
-        public static Func<GMapProvider, string, WebRequest> WebRequestFactory = null;
+        private static Func<GMapProvider, string, WebRequest> _webRequestFactory;
+
+        /// <summary>
+        ///     Set the factory used to create every tile and content request. Pass null to use a plain request.
+        /// </summary>
+        /// <param name="factory">The factory, taking the calling provider and the Uri</param>
+        public static void SetWebRequestFactory(Func<GMapProvider, string, WebRequest> factory)
+        {
+            _webRequestFactory = factory;
+        }
 
         /// <summary>
         ///     NetworkCredential for tile http access
@@ -494,7 +503,7 @@ namespace GMap.NET.MapProviders
             PureImage ret = null;
 
             var request = IsSocksProxy ? SocksHttpWebRequest.Create(url) : 
-                WebRequestFactory != null ? WebRequestFactory(this, url) : WebRequest.Create(url);
+                _webRequestFactory != null ? _webRequestFactory(this, url) : WebRequest.Create(url);
 
             if (WebProxy != null)
             {
@@ -586,7 +595,7 @@ namespace GMap.NET.MapProviders
             string ret = string.Empty;
 
             var request = IsSocksProxy ? SocksHttpWebRequest.Create(url) : 
-                WebRequestFactory != null ? WebRequestFactory(this, url) : WebRequest.Create(url);
+                _webRequestFactory != null ? _webRequestFactory(this, url) : WebRequest.Create(url);
 
             if (WebProxy != null)
             {
