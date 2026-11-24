@@ -44,7 +44,15 @@ namespace GMap.NET.Internals
                 _overlays = new PureImage[4];
             }
 
-            _overlays[Interlocked.Increment(ref _overlaysCount) - 1] = i;
+            // a tile shrunk from a higher zoom holds several images per overlay
+            long count = Interlocked.Read(ref _overlaysCount);
+            if (count == _overlays.Length)
+            {
+                Array.Resize(ref _overlays, _overlays.Length * 2);
+            }
+
+            _overlays[count] = i;
+            Interlocked.Increment(ref _overlaysCount);
         }
 
         internal bool HasAnyOverlays

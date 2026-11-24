@@ -1000,7 +1000,17 @@ namespace GMap.NET.Avalonia
                                         _core.TileRect.Width + 0.6,
                                         _core.TileRect.Height + 0.6);
 
-                                    if (!img.IsParent)
+                                    if (img.IsChild)
+                                    {
+                                        var childImgRect =
+                                            new Rect(_core.TileRect.X + _core.TileRect.Width * img.Xoff / (double)img.Ix + 0.6,
+                                                _core.TileRect.Y + _core.TileRect.Height * img.Yoff / (double)img.Ix + 0.6,
+                                                _core.TileRect.Width / (double)img.Ix + 0.6,
+                                                _core.TileRect.Height / (double)img.Ix + 0.6);
+
+                                        g.DrawImage(img.Img, childImgRect);
+                                    }
+                                    else if (!img.IsParent)
                                     {
                                         g.DrawImage(img.Img, imgRect);
                                     }
@@ -1056,7 +1066,7 @@ namespace GMap.NET.Avalonia
                                 // render tile
                                 foreach (GMapImage img in parentTile.Overlays)
                                 {
-                                    if (img != null && img.Img != null && !img.IsParent)
+                                    if (img != null && img.Img != null && !img.IsParent && !img.IsChild)
                                     {
                                         if (!found)
                                             found = true;

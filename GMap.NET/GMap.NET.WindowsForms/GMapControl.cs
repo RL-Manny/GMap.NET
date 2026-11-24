@@ -1394,7 +1394,24 @@ namespace GMap.NET.WindowsForms
                                             if (!found)
                                                 found = true;
 
-                                            if (!img.IsParent)
+                                            if (img.IsChild)
+                                            {
+                                                var dst = new Rectangle(
+                                                    (int)(Core.TileRect.X + Core.TileRect.Width * img.Xoff / img.Ix),
+                                                    (int)(Core.TileRect.Y + Core.TileRect.Height * img.Yoff / img.Ix),
+                                                    (int)(Core.TileRect.Width / img.Ix),
+                                                    (int)(Core.TileRect.Height / img.Ix));
+
+                                                g.DrawImage(img.Img,
+                                                    dst,
+                                                    0,
+                                                    0,
+                                                    img.Img.Width,
+                                                    img.Img.Height,
+                                                    GraphicsUnit.Pixel,
+                                                    _tileFlipXYAttributes);
+                                            }
+                                            else if (!img.IsParent)
                                             {
                                                 if (!_mapRenderTransform.HasValue && !IsRotated)
                                                 {
@@ -1470,7 +1487,7 @@ namespace GMap.NET.WindowsForms
                                     {
                                         foreach (GMapImage img in parentTile.Overlays)
                                         {
-                                            if (img != null && img.Img != null && !img.IsParent)
+                                            if (img != null && img.Img != null && !img.IsParent && !img.IsChild)
                                             {
                                                 if (!found)
                                                     found = true;

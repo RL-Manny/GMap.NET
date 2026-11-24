@@ -223,10 +223,8 @@ namespace GMap.NET.Internals
 
                         ReloadMap();
 
-                        if (MinZoom < _provider.MinZoom)
-                        {
-                            MinZoom = _provider.MinZoom;
-                        }
+                        // the zoom range is left alone, as tiles outside the provider's are filled from its nearest
+                        // zoom (see AddOutOfRangeImages)
 
                         //if(provider.MaxZoom.HasValue && maxZoom > provider.MaxZoom)
                         //{
@@ -310,6 +308,17 @@ namespace GMap.NET.Internals
         ///     pause between tile retries, in milliseconds
         /// </summary>
         internal const int RetryBackoffMs = 400;
+
+        /// <summary>
+        ///     how many zoom levels above the provider's highest a tile is stretched from it, after which a single pixel
+        ///     of it covers the whole tile
+        /// </summary>
+        internal const int MaxStretchedZoomLevels = 8;
+
+        /// <summary>
+        ///     how many zoom levels below the provider's lowest a tile is shrunk from it, which takes 4 tiles per level
+        /// </summary>
+        internal const int MaxShrunkZoomLevels = 2;
 
         /// <summary>
         ///     true for a one-off failure worth retrying, false when the provider is down or the tile doesn't exist
@@ -1001,6 +1010,16 @@ namespace GMap.NET.Internals
                         PureImage img = null;
                         Exception ex = null;
 
+                        if (task.Core.IsOutsideProviderZoom(task.Zoom))
+                        {
+                            if (!AddOutOfRangeImages(task, tl, ref t, out ex))
+                            {
+                                AddFailedLoad(task, ex);
+                            }
+
+                            continue;
+                        }
+
                         // load the tile, retrying only one-off failures (see ShouldRetryTile)
                         int retry = 0;
                         bool retryable;
@@ -1103,25 +1122,7 @@ namespace GMap.NET.Internals
                         }
                         else
                         {
-                            if (ex != null && task.Core.FailedLoads != null)
-                            {
-                                lock (task.Core.FailedLoads)
-                                {
-                                    if (!task.Core.FailedLoads.ContainsKey(task))
-                                    {
-                                        task.Core.FailedLoads.Add(task, ex);
-
-                                        if (task.Core.OnEmptyTileError != null)
-                                        {
-                                            if (!task.Core._raiseEmptyTileError)
-                                            {
-                                                task.Core._raiseEmptyTileError = true;
-                                                task.Core.OnEmptyTileError(task.Zoom, task.Pos);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            AddFailedLoad(task, ex);
                         }
                     }
 
@@ -1146,6 +1147,161 @@ namespace GMap.NET.Internals
                 if (task.Core.Refresh != null)
                 {
                     task.Core.Refresh.Set();
+                }
+            }
+        }
+
+        /// <summary>
+        ///     true if the provider has no tiles of its own at this zoom
+        /// </summary>
+        bool IsOutsideProviderZoom(int zoom)
+        {
+            return zoom < _provider.MinZoom || (_provider.MaxZoom.HasValue && zoom > _provider.MaxZoom.Value);
+        }
+
+        /// <summary>
+        ///     Fill a tile outside the provider's zoom range from the nearest zoom it has. Above the range the tile is
+        ///     stretched from part of one at the provider's highest zoom, and below it shrunk from the ones at its lowest.
+        /// </summary>
+        /// <param name="task">The tile to fill</param>
+        /// <param name="provider">The provider, or overlay of it, to take the images from</param>
+        /// <param name="tile">The tile to add the images to</param>
+        /// <param name="ex">The last error loading an image, if any</param>
+        /// <returns>true if any image was added to the tile</returns>
+        static bool AddOutOfRangeImages(LoadTask task, GMapProvider provider, ref Tile tile, out Exception ex)
+        {
+            ex = null;
+
+            var core = task.Core;
+            if (!core.FillEmptyTiles || !(core._provider.Projection is MercatorProjection))
+            {
+                return false;
+            }
+
+            int minZoom = core._provider.MinZoom;
+            int? maxZoom = core._provider.MaxZoom;
+
+            if (maxZoom.HasValue && task.Zoom > maxZoom.Value)
+            {
+                int levels = task.Zoom - maxZoom.Value;
+                if (levels > MaxStretchedZoomLevels)
+                {
+                    return false;
+                }
+
+                long count = 1L << levels;
+                var parentPos = new GPoint(task.Pos.X / count, task.Pos.Y / count);
+
+                var img = GetImageWithRetry(core, provider, parentPos, maxZoom.Value, out ex);
+                if (img == null)
+                {
+                    return false;
+                }
+
+                img.IsParent = true;
+                img.Ix = count;
+                img.Xoff = task.Pos.X - parentPos.X * count;
+                img.Yoff = task.Pos.Y - parentPos.Y * count;
+
+                tile.AddOverlay(img);
+                return true;
+            }
+            else
+            {
+                int levels = minZoom - task.Zoom;
+                if (levels > MaxShrunkZoomLevels)
+                {
+                    return false;
+                }
+
+                long count = 1L << levels;
+                bool added = false;
+
+                for (long y = 0; y < count; y++)
+                {
+                    for (long x = 0; x < count; x++)
+                    {
+                        var childPos = new GPoint(task.Pos.X * count + x, task.Pos.Y * count + y);
+
+                        var img = GetImageWithRetry(core, provider, childPos, minZoom, out var childEx);
+                        if (img == null)
+                        {
+                            ex = childEx ?? ex;
+                            continue;
+                        }
+
+                        img.IsChild = true;
+                        img.Ix = count;
+                        img.Xoff = x;
+                        img.Yoff = y;
+
+                        tile.AddOverlay(img);
+                        added = true;
+                    }
+                }
+
+                return added;
+            }
+        }
+
+        /// <summary>
+        ///     Get a tile's image at any zoom, retrying only one-off failures (see ShouldRetryTile).
+        /// </summary>
+        /// <param name="core">The map core</param>
+        /// <param name="provider">The provider to take the image from</param>
+        /// <param name="pos">The tile's position at the zoom</param>
+        /// <param name="zoom">The zoom</param>
+        /// <param name="ex">The last error, if the image could not be got</param>
+        /// <returns>The image, or null if it could not be got</returns>
+        static PureImage GetImageWithRetry(Core core, GMapProvider provider, GPoint pos, int zoom, out Exception ex)
+        {
+            // tile number inversion(BottomLeft -> TopLeft)
+            if (provider.InvertedAxisY)
+            {
+                pos = new GPoint(pos.X, core._provider.Projection.GetTileMatrixMaxXY(zoom).Height - pos.Y);
+            }
+
+            int retry = 0;
+
+            while (true)
+            {
+                var img = GMaps.Instance.GetImageFrom(provider, pos, zoom, out ex);
+
+                if (img != null || !core.ShouldRetryTile(ex) || ++retry >= core.RetryLoadTile)
+                {
+                    return img;
+                }
+
+                Thread.Sleep(RetryBackoffMs);
+            }
+        }
+
+        /// <summary>
+        ///     Record a tile that failed to load, and raise OnEmptyTileError for the first one.
+        /// </summary>
+        /// <param name="task">The tile</param>
+        /// <param name="ex">The error, or null if there was none to record</param>
+        static void AddFailedLoad(LoadTask task, Exception ex)
+        {
+            if (ex == null || task.Core.FailedLoads == null)
+            {
+                return;
+            }
+
+            lock (task.Core.FailedLoads)
+            {
+                if (!task.Core.FailedLoads.ContainsKey(task))
+                {
+                    task.Core.FailedLoads.Add(task, ex);
+
+                    if (task.Core.OnEmptyTileError != null)
+                    {
+                        if (!task.Core._raiseEmptyTileError)
+                        {
+                            task.Core._raiseEmptyTileError = true;
+                            task.Core.OnEmptyTileError(task.Zoom, task.Pos);
+                        }
+                    }
                 }
             }
         }

@@ -38,7 +38,16 @@ namespace GMap.NET
         /// </summary>
         public DateTime? CacheTime;
 
+        /// <summary>
+        ///     the image is a tile from a lower zoom: the tile is the part at (Xoff, Yoff) of it, an Ix by Ix grid
+        /// </summary>
         internal bool IsParent;
+
+        /// <summary>
+        ///     the image is a tile from a higher zoom: it fills the part at (Xoff, Yoff) of the tile, an Ix by Ix grid
+        /// </summary>
+        internal bool IsChild;
+
         internal long Ix;
         internal long Xoff;
         internal long Yoff;
